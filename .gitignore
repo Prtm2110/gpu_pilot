@@ -1,0 +1,63 @@
+# Terraform files that should be ignored
+terraform-scale/.terraform/
+terraform-scale/.terraform.lock.hcl
+terraform-scale/terraform.tfstate
+terraform-scale/terraform.tfstate.backup
+terraform-scale/terraform.tfvars
+terraform-scale/*.tfplan
+terraform-scale/crash.log
+terraform-scale/crash.*.log
+
+# Python virtual environment
+scaler/venv/
+scaler/__pycache__/
+scaler/*.pyc
+scaler/*.pyo
+scaler/*.egg-info/
+
+# Logs
+*.log
+/var/log/gpu-scaler.log
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Secret tokens and credentials
+*secret*
+*token*
+*key*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# AWS credentials (if accidentally placed in project)
+.aws/
+credentials
+
+# Backup files
+*.bak
+*.backup
+
+# Generated webhook payloads (from webhook_examples.sh)
+scale_up_payload.json
+scale_down_payload.json
