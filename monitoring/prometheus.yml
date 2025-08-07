@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "prometheus-rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - localhost:9093
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'slurm-exporter'
+    static_configs:
+      - targets: ['YOUR_SLURM_HEAD_NODE:8080']
+    scrape_interval: 30s
+
+  - job_name: 'gpu-scaler'
+    static_configs:
+      - targets: ['localhost:5000']
+    metrics_path: '/health'
+    scrape_interval: 30s
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: 
+        - 'YOUR_SLURM_HEAD_NODE:9100'
+        # GPU nodes will be auto-discovered via EC2 service discovery
+    
+  - job_name: 'gpu-nodes'
+    ec2_sd_configs:
+      - region: us-west-2
+        port: 9100
+        filters:
+          - name: tag:Type
+            values: 
+              - slurm-compute
+          - name: instance-state-name
+            values:
+              - running
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Name]
+        target_label: instance_name
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_instance_type]
+        target_label: instance_type

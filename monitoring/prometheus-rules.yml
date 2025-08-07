@@ -1,0 +1,56 @@
+groups:
+- name: slurm
+  rules:
+  - alert: TooManyPendingJobs
+    expr: slurm_pending_jobs > 20
+    for: 2m
+    labels:
+      severity: warning
+      service: slurm
+    annotations:
+      summary: "High number of pending Slurm jobs"
+      description: "There are {{ $value }} pending jobs in the Slurm queue for more than 2 minutes"
+      
+  - alert: GPUNodesNeeded
+    expr: slurm_pending_jobs{partition="gpu"} > 10
+    for: 1m
+    labels:
+      severity: warning
+      service: slurm
+      action: scale_up
+    annotations:
+      summary: "GPU nodes needed for pending jobs"
+      description: "{{ $value }} GPU jobs are pending, need to scale up"
+      
+  - alert: LowGPUUtilization
+    expr: slurm_running_jobs{partition="gpu"} == 0 and slurm_pending_jobs{partition="gpu"} == 0
+    for: 10m
+    labels:
+      severity: info
+      service: slurm
+      action: scale_down
+    annotations:
+      summary: "Low GPU utilization"
+      description: "No GPU jobs running or pending for 10 minutes, consider scaling down"
+
+- name: infrastructure
+  rules:
+  - alert: HighAWSCosts
+    expr: aws_estimated_monthly_cost > 1000
+    for: 5m
+    labels:
+      severity: warning
+      service: aws
+    annotations:
+      summary: "High AWS costs detected"
+      description: "Estimated monthly AWS cost is ${{ $value }}"
+      
+  - alert: AutoScalerDown
+    expr: up{job="gpu-scaler"} == 0
+    for: 1m
+    labels:
+      severity: critical
+      service: scaler
+    annotations:
+      summary: "GPU auto-scaler is down"
+      description: "The GPU auto-scaler service is not responding"

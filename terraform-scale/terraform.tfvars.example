@@ -1,0 +1,30 @@
+# Example terraform.tfvars file
+# Copy this file to terraform.tfvars and customize for your environment
+
+# AWS Configuration
+region = "us-west-2"
+
+# VPC and Network Configuration
+# Uncomment and set these if you have specific VPC/subnet requirements
+# Otherwise, the default VPC will be used
+# vpc_id = "vpc-12345678"
+# subnet_ids = ["subnet-12345678", "subnet-87654321"]
+
+# Instance Configuration
+# IMPORTANT: Replace with your custom AMI that includes CUDA and Slurm
+ami_id = "ami-0c02fb55956c7d316"  # Amazon Linux 2 - REPLACE THIS
+instance_type = "g4dn.xlarge"
+
+# SSH Key for instances (optional but recommended)
+# key_name = "my-key-pair"
+
+# Scaling Configuration
+min_size = 0
+max_size = 10
+desired_capacity_up = 2
+
+# Security Groups (optional - will create default if not specified)
+# security_group_ids = ["sg-12345678"]
+
+# Scaling behavior
+scale_up = false  # This will be overridden by the scaler service

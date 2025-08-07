@@ -1,0 +1,69 @@
+global:
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alertmanager@yourdomain.com'
+
+route:
+  group_by: ['alertname', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'default'
+  routes:
+  - match:
+      service: slurm
+    routes:
+    - match:
+        action: scale_up
+      receiver: cloud-scaler-up
+    - match:
+        action: scale_down
+      receiver: cloud-scaler-down
+  - match:
+      service: scaler
+    receiver: admin-email
+
+receivers:
+- name: 'default'
+  slack_configs:
+  - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+    channel: '#alerts'
+    title: 'HPC Alert'
+    text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+- name: 'cloud-scaler-up'
+  webhook_configs:
+  - url: "http://YOUR-SCALER-HOST:5000/scale"
+    send_resolved: false
+    http_config:
+      bearer_token: "your-secret-token-here"
+    max_alerts: 1
+  - url: "http://YOUR-SCALER-HOST:5000/scale"
+    send_resolved: false
+    http_config:
+      bearer_token: "your-secret-token-here"
+    max_alerts: 1
+
+- name: 'cloud-scaler-down'
+  webhook_configs:
+  - url: "http://YOUR-SCALER-HOST:5000/scale"
+    send_resolved: true
+    http_config:
+      bearer_token: "your-secret-token-here"
+    max_alerts: 1
+
+- name: 'admin-email'
+  email_configs:
+  - to: 'admin@yourdomain.com'
+    subject: 'HPC Infrastructure Alert'
+    body: |
+      {{ range .Alerts }}
+      Alert: {{ .Annotations.summary }}
+      Description: {{ .Annotations.description }}
+      {{ end }}
+
+inhibit_rules:
+- source_match:
+    severity: 'critical'
+  target_match:
+    severity: 'warning'
+  equal: ['alertname', 'service']
