@@ -8,7 +8,7 @@ set -e
 SCALER_URL="http://localhost:5000"
 SECRET_TOKEN="${SCALER_SECRET_TOKEN:-your-secret-token-here}"
 
-echo "🧪 GPU Pilot Test Script"
+echo " GPU Pilot Test Script"
 echo "========================"
 
 # Function to make authenticated requests
@@ -16,7 +16,7 @@ make_request() {
     local method=$1
     local endpoint=$2
     local data=$3
-    
+
     if [ "$method" = "POST" ] && [ -n "$data" ]; then
         curl -s -X POST \
             -H "Authorization: Bearer $SECRET_TOKEN" \
@@ -34,9 +34,9 @@ make_request() {
 echo "🏥 Testing health endpoint..."
 response=$(make_request GET "/health")
 if echo "$response" | grep -q "healthy"; then
-    echo "✅ Health check passed"
+    echo " Health check passed"
 else
-    echo "❌ Health check failed: $response"
+    echo " Health check failed: $response"
     exit 1
 fi
 
@@ -44,15 +44,15 @@ fi
 echo "📈 Testing scale up..."
 response=$(make_request POST "/scale" '{"action": "scale_up"}')
 if echo "$response" | grep -q "accepted"; then
-    echo "✅ Scale up request accepted"
+    echo " Scale up request accepted"
 else
-    echo "❌ Scale up failed: $response"
+    echo " Scale up failed: $response"
 fi
 
 sleep 5
 
 # Test 3: Check status
-echo "📊 Checking status..."
+echo " Checking status..."
 response=$(make_request GET "/status")
 echo "Status response: $response"
 
@@ -63,12 +63,12 @@ sleep 30
 echo "📉 Testing scale down..."
 response=$(make_request POST "/scale" '{"action": "scale_down"}')
 if echo "$response" | grep -q "accepted"; then
-    echo "✅ Scale down request accepted"
+    echo " Scale down request accepted"
 else
-    echo "❌ Scale down failed: $response"
+    echo " Scale down failed: $response"
 fi
 
 echo ""
-echo "🎉 Test completed!"
+echo " Test completed!"
 echo "Check the logs for detailed information:"
 echo "  sudo journalctl -u gpu-scaler -f"

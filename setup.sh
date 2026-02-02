@@ -1,16 +1,17 @@
 #!/bin/bash
 
 # GPU Pilot Setup Script
-# This script helps you set up the GPU auto-scaling system
+# This script sets up the GPU auto-scaling system
 
 set -e
 
-echo "🚀 GPU Pilot Setup Script"
+echo "GPU Pilot Setup Script"
 echo "=========================="
+echo ""
 
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
-   echo "⚠️  This script should not be run as root"
+   echo "  This script should not be run as root"
    exit 1
 fi
 
@@ -20,45 +21,48 @@ command_exists() {
 }
 
 # Check prerequisites
-echo "📋 Checking prerequisites..."
+echo " Checking prerequisites..."
 
 if ! command_exists terraform; then
-    echo "❌ Terraform not found. Please install Terraform first."
+    echo " Terraform not found. Please install Terraform first."
     echo "   Visit: https://developer.hashicorp.com/terraform/downloads"
     exit 1
 fi
 
 if ! command_exists aws; then
-    echo "❌ AWS CLI not found. Please install AWS CLI first."
+    echo " AWS CLI not found. Please install AWS CLI first."
     echo "   Visit: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
     exit 1
 fi
 
 if ! command_exists python3; then
-    echo "❌ Python 3 not found. Please install Python 3 first."
+    echo " Python 3 not found. Please install Python 3 first."
     exit 1
 fi
 
-echo "✅ Prerequisites check passed"
+echo " Prerequisites check passed"
 
 # Get current directory
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 
+echo "📂 Project directory: $PROJECT_ROOT"
+echo ""
+
 # Initialize Terraform
-echo "🔧 Initializing Terraform..."
+echo " Initializing Terraform..."
 cd "$PROJECT_ROOT/terraform-scale"
 
 if [ ! -d ".terraform" ]; then
     terraform init
-    echo "✅ Terraform initialized"
+    echo " Terraform initialized"
 else
-    echo "✅ Terraform already initialized"
+    echo " Terraform already initialized"
 fi
 
 # Create terraform.tfvars if it doesn't exist
 if [ ! -f "terraform.tfvars" ]; then
-    echo "📝 Creating terraform.tfvars template..."
+    echo "Creating terraform.tfvars template..."
     cat > terraform.tfvars << EOF
 # AWS Configuration
 region = "us-west-2"
@@ -80,28 +84,34 @@ desired_capacity_up = 2
 # Security (if you have existing security groups)
 # security_group_ids = ["sg-xxxxxxxxx"]
 EOF
-    echo "✅ Created terraform.tfvars template"
-    echo "⚠️  Please edit terraform.tfvars with your actual values before proceeding"
+    echo " Created terraform.tfvars template"
+    echo "  Please edit terraform.tfvars with your actual values before proceeding"
 fi
 
 # Setup Python environment
-echo "🐍 Setting up Python environment..."
+echo " Setting up Python environment..."
 cd "$PROJECT_ROOT/scaler"
 
 if [ ! -d "venv" ]; then
     python3 -m venv venv
-    echo "✅ Created Python virtual environment"
+    echo " Created Python virtual environment"
+else
+    echo " Python virtual environment already exists"
 fi
 
+# shellcheck disable=SC1091
 source venv/bin/activate
+pip install --upgrade pip > /dev/null 2>&1
 pip install -r requirements.txt
-echo "✅ Installed Python dependencies"
+deactivate
+echo " Installed Python dependencies"
+echo ""
 
 # Create systemd service file
-echo "🔧 Creating systemd service..."
+echo " Creating systemd service..."
 sudo tee /etc/systemd/system/gpu-scaler.service > /dev/null << EOF
 [Unit]
-Description=GPU Auto-Scaler Service
+Description=GPU Pilot Auto-Scaler Service
 After=network.target
 
 [Service]
@@ -109,34 +119,68 @@ Type=simple
 User=$USER
 Group=$USER
 WorkingDirectory=$PROJECT_ROOT/scaler
-Environment=PATH=$PROJECT_ROOT/scaler/venv/bin
-Environment=SCALER_SECRET_TOKEN=your-secret-token-here
-ExecStart=$PROJECT_ROOT/scaler/venv/bin/python scaler.py
+Environment="PATH=$PROJECT_ROOT/scaler/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="SCALER_SECRET_TOKEN=your-secret-token-here"
+Environment="TERRAFORM_DIR=$PROJECT_ROOT/terraform-scale"
+ExecStart=$PROJECT_ROOT/scaler/venv/bin/python $PROJECT_ROOT/scaler/scaler.py
 Restart=always
 RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gpu-scaler
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-echo "✅ Created systemd service"
+echo " Created systemd service"
+echo ""
 
 # Create log directory
+echo " Setting up logging..."
 sudo mkdir -p /var/log
 sudo touch /var/log/gpu-scaler.log
-sudo chown $USER:$USER /var/log/gpu-scaler.log
+sudo chown "$USER":"$USER" /var/log/gpu-scaler.log
+echo " Log file created at /var/log/gpu-scaler.log"
 
 echo ""
-echo "🎉 Setup completed!"
 echo ""
-echo "Next steps:"
-echo "1. Configure AWS credentials: aws configure"
-echo "2. Edit terraform-scale/terraform.tfvars with your AWS settings"
-echo "3. Create and configure your custom AMI with CUDA and Slurm"
-echo "4. Set environment variable: export SCALER_SECRET_TOKEN=your-secret-token"
-echo "5. Test terraform: cd terraform-scale && terraform plan"
-echo "6. Start the scaler service: sudo systemctl enable gpu-scaler && sudo systemctl start gpu-scaler"
-echo "7. Configure Prometheus and Alertmanager using files in monitoring/"
+echo " Setup completed successfully!"
 echo ""
-echo "📚 Check README.md for detailed instructions"
+echo ""
+echo " Next steps:"
+echo ""
+echo "1. Configure AWS credentials:"
+echo "   aws configure"
+echo ""
+echo "2. Edit terraform-scale/terraform.tfvars with your settings:"
+echo "   - VPC ID and subnet IDs"
+echo "   - Custom AMI with CUDA and Slurm"
+echo "   - Instance type and scaling limits"
+echo ""
+echo "3. Set your secure authentication token:"
+echo "   export SCALER_SECRET_TOKEN='your-secure-random-token'"
+echo "   # Add to /etc/systemd/system/gpu-scaler.service"
+echo ""
+echo "4. Test Terraform configuration:"
+echo "   cd terraform-scale"
+echo "   terraform plan"
+echo ""
+echo "5. Start the scaler service:"
+echo "   sudo systemctl enable gpu-scaler"
+echo "   sudo systemctl start gpu-scaler"
+echo "   sudo systemctl status gpu-scaler"
+echo ""
+echo "6. Configure Prometheus and Alertmanager:"
+echo "   - Copy monitoring/prometheus-rules.yml to your Prometheus"
+echo "   - Update monitoring/alertmanager.yml with your webhook URL"
+echo ""
+echo "7. Verify the service:"
+echo "   curl http://localhost:5000/health"
+echo ""
+echo ""
+echo " For detailed instructions, see README.md"
+echo ""

@@ -19,7 +19,7 @@ variable "vpc_id" {
 variable "subnet_ids" {
   type        = list(string)
   description = "List of subnet IDs for the auto scaling group"
-  default     = ["subnet-aaa", "subnet-bbb"]
+  default     = []
 }
 
 variable "ami_id" {

@@ -1,319 +1,323 @@
 # GPU Pilot - Automated GPU Scaling for HPC Clusters
 
-GPU Pilot is an automated scaling solution that dynamically provisions GPU compute nodes based on Slurm queue demand using Terraform, Prometheus, and AWS Auto Scaling Groups.
+GPU Pilot is an automated scaling solution that dynamically provisions GPU compute nodes based on Slurm workload demand. It uses Terraform for infrastructure management, Prometheus for monitoring, and AWS Auto Scaling Groups for elastic capacity.
 
-## 🏗️ Architecture
+## Architecture
 
 ```
-[Slurm Queue] → [Prometheus Alert] → [Python Scaler] → [Terraform] → [AWS GPU Nodes]
+Slurm Queue → Prometheus → Alertmanager → GPU Scaler Service → Terraform → AWS Auto Scaling Group
 ```
 
-1. **Slurm** - Job scheduler with pending job metrics
-2. **Prometheus** - Monitors Slurm metrics and triggers alerts
-3. **Python Scaler** - Receives webhooks and executes Terraform
-4. **Terraform** - Manages AWS Auto Scaling Groups
-5. **AWS GPU Nodes** - Elastic compute nodes that auto-join the cluster
+### Components
 
-## 🚀 Quick Start
+1. **Slurm Cluster** - HPC job scheduler with Prometheus exporter
+2. **Prometheus** - Monitors Slurm metrics and evaluates alerting rules
+3. **Alertmanager** - Sends webhooks to the scaler service
+4. **GPU Scaler Service** - Flask REST API that triggers Terraform operations
+5. **Terraform** - Manages AWS Auto Scaling Groups
+6. **AWS GPU Nodes** - Elastic GPU compute instances
 
-### 1. Prerequisites
+## Prerequisites
 
-- AWS CLI configured with appropriate permissions
+- AWS Account with EC2, Auto Scaling, and VPC permissions
+- AWS CLI configured
 - Terraform >= 1.0
 - Python 3.7+
-- Slurm cluster with prometheus exporter
+- Slurm cluster with Prometheus exporter
 - Prometheus and Alertmanager
 
-### 2. Setup
+## Installation
 
+### Install Required Dependencies
+
+**System packages:**
 ```bash
-# Clone and setup
-git clone <your-repo>
-cd gpu_pilot
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install -y python3 python3-pip python3-venv
+
+# Install Terraform
+sudo snap install terraform
+# Or download from: https://www.terraform.io/downloads
+
+# Install AWS CLI
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+```
+
+**Python dependencies:**
+```bash
+cd gpu_pilot/scaler
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Or use the automated setup script that installs everything:
+```bash
 ./setup.sh
 ```
 
-### 3. Configure AWS Settings
+## Quick Start
+
+### 1. Setup
+
+```bash
+git clone <repository-url>
+cd gpu_pilot
+chmod +x setup.sh
+./setup.sh
+```
+
+### 2. Configure AWS Resources
 
 Edit `terraform-scale/terraform.tfvars`:
 
 ```hcl
-# AWS Configuration
 region = "us-west-2"
-vpc_id = "vpc-12345678"  # Your VPC ID
-subnet_ids = ["subnet-12345678", "subnet-87654321"]  # Your subnet IDs
+vpc_id = ""  # Leave empty for default VPC
+subnet_ids = []  # Leave empty for default subnets
 
-# Instance Configuration
-ami_id = "ami-12345678"  # Your custom AMI with CUDA + Slurm
+ami_id = "ami-0123456789abcdef"  # Your custom AMI with CUDA + Slurm
 instance_type = "g4dn.xlarge"
-key_name = "my-key-pair"
+key_name = "your-keypair-name"
 
-# Scaling Configuration
+min_size = 0
 max_size = 10
 desired_capacity_up = 2
 ```
 
-### 4. Initialize and Test Terraform
+### 3. Initialize Terraform
 
 ```bash
 cd terraform-scale
 terraform init
+terraform validate
 terraform plan
-terraform apply -var="scale_up=false"  # Start with 0 instances
+terraform apply -var="scale_up=false"
 ```
 
-### 5. Start the Scaler Service
+### 4. Configure Authentication
 
 ```bash
-# Set your secret token
-export SCALER_SECRET_TOKEN="your-super-secret-token"
+export SCALER_SECRET_TOKEN=$(openssl rand -hex 32)
+sudo nano /etc/systemd/system/gpu-scaler.service
+# Update Environment="SCALER_SECRET_TOKEN=..." with your token
+sudo systemctl daemon-reload
+```
 
-# Start the service
+### 5. Start Service
+
+```bash
 sudo systemctl enable gpu-scaler
 sudo systemctl start gpu-scaler
-
-# Check status
 sudo systemctl status gpu-scaler
-curl -H "Authorization: Bearer your-super-secret-token" http://localhost:5000/health
+curl http://localhost:5000/health
 ```
 
-### 6. Configure Monitoring
+### 6. Configure Prometheus and Alertmanager
 
-#### Prometheus Configuration
+Copy `monitoring/prometheus-rules.yml` to your Prometheus rules directory.
 
-Add to your `prometheus.yml`:
-
-```yaml
-rule_files:
-  - "path/to/gpu_pilot/monitoring/prometheus-rules.yml"
-
-scrape_configs:
-  - job_name: 'gpu-scaler'
-    static_configs:
-      - targets: ['localhost:5000']
-    metrics_path: '/health'
-```
-
-#### Alertmanager Configuration
-
-Update your `alertmanager.yml`:
+Update `alertmanager.yml`:
 
 ```yaml
 receivers:
-- name: 'cloud-scaler-up'
-  webhook_configs:
-  - url: "http://your-scaler-host:5000/scale"
-    send_resolved: false
-    http_config:
-      bearer_token: "your-super-secret-token"
+  - name: 'gpu-scaler-up'
+    webhook_configs:
+      - url: "http://your-scaler-host:5000/scale"
+        send_resolved: false
+        http_config:
+          bearer_token: "your-secret-token-here"
 
-- name: 'cloud-scaler-down'
-  webhook_configs:
-  - url: "http://your-scaler-host:5000/scale"
-    send_resolved: true
-    http_config:
-      bearer_token: "your-super-secret-token"
+  - name: 'gpu-scaler-down'
+    webhook_configs:
+      - url: "http://your-scaler-host:5000/scale"
+        send_resolved: true
+        http_config:
+          bearer_token: "your-secret-token-here"
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SCALER_SECRET_TOKEN` | Authentication token for webhooks | `your-secret-token-here` |
+| `SCALER_SECRET_TOKEN` | Bearer token for API authentication | `your-secret-token-here` |
+| `TERRAFORM_DIR` | Path to Terraform configuration | `../terraform-scale` |
+| `COOLDOWN_PERIOD` | Seconds between scale operations | `300` |
 
 ### Terraform Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `scale_up` | Whether to scale up (true) or down (false) | `false` |
+| `scale_up` | Scale up (true) or down (false) | `false` |
 | `region` | AWS region | `us-west-2` |
-| `ami_id` | AMI ID for GPU instances | - |
+| `vpc_id` | VPC ID (empty for default) | `""` |
+| `subnet_ids` | Subnet IDs (empty for default) | `[]` |
+| `ami_id` | AMI with CUDA and Slurm | Required |
 | `instance_type` | EC2 instance type | `g4dn.xlarge` |
-| `max_size` | Maximum instances in ASG | `10` |
+| `key_name` | EC2 key pair name | `""` |
+| `security_group_ids` | Security group IDs | `[]` |
+| `min_size` | Minimum instances | `0` |
+| `max_size` | Maximum instances | `10` |
 | `desired_capacity_up` | Desired capacity when scaling up | `2` |
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### Health Check
-```bash
+
+```http
 GET /health
 ```
 
-### Scale Operations
-```bash
+Response:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-02-02T10:30:00.000000",
+  "terraform_dir": "/path/to/terraform-scale",
+  "version": "1.0.0"
+}
+```
+
+### Scale Operation
+
+```http
 POST /scale
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "action": "scale_up"  # or "scale_down"
+  "action": "scale_up"
+}
+```
+
+Success (202):
+```json
+{
+  "status": "accepted",
+  "action": "scale_up",
+  "message": "Scaling operation scale_up initiated",
+  "timestamp": "2026-02-02T10:30:00.000000"
+}
+```
+
+Cooldown Active (429):
+```json
+{
+  "status": "rejected",
+  "error": "Cooldown period active",
+  "cooldown_remaining_seconds": 180
 }
 ```
 
 ### Status Check
-```bash
+
+```http
 GET /status
 Authorization: Bearer <token>
 ```
 
-## 🔨 Creating Custom AMI
-
-Your AMI should include:
-
-1. **NVIDIA Drivers and CUDA**
-2. **Slurm Worker Daemon**
-3. **Munge Authentication**
-4. **Prometheus Node Exporter**
-
-### Sample AMI Build Script
-
-```bash
-#!/bin/bash
-# Start with Amazon Linux 2 or Ubuntu 20.04
-
-# Install NVIDIA drivers
-yum install -y kernel-devel-$(uname -r) kernel-headers-$(uname -r)
-wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-rhel7-11-8-local-11.8.0_520.61.05-1.x86_64.rpm
-rpm -i cuda-repo-rhel7-11-8-local-11.8.0_520.61.05-1.x86_64.rpm
-yum clean all
-yum install -y cuda-toolkit-11-8
-
-# Install Slurm
-yum install -y epel-release
-yum install -y slurm slurm-munge
-
-# Configure auto-startup
-systemctl enable slurmd
-systemctl enable munge
-
-# Install monitoring
-yum install -y prometheus-node-exporter
-systemctl enable prometheus-node-exporter
+Response:
+```json
+{
+  "status": "success",
+  "terraform_outputs": {
+    "autoscaling_group_name": {"value": "hpc-gpu-asg"},
+    "current_desired_capacity": {"value": 2}
+  },
+  "last_scale_times": {
+    "scale_up": 1738492200.0
+  },
+  "terraform_dir": "/path/to/terraform-scale"
+}
 ```
 
-## 🚨 Alerting Rules
+## Alerting Rules
 
-The system includes several pre-configured alerts:
+Pre-configured alerts in `monitoring/prometheus-rules.yml`:
 
-- **TooManyPendingJobs** - Triggers scale-up when >20 jobs pending for 2 minutes
-- **GPUNodesNeeded** - Triggers scale-up for GPU partition specifically
-- **LowGPUUtilization** - Triggers scale-down when no GPU jobs for 10 minutes
-- **AutoScalerDown** - Critical alert when scaler service is unavailable
+- **GPUNodesNeeded** - Triggers scale-up when GPU partition has >10 pending jobs for 1+ minute
+- **LowGPUUtilization** - Triggers scale-down when no GPU jobs for 10+ minutes
+- **TooManyPendingJobs** - General alert for >20 pending jobs
+- **AutoScalerDown** - Critical alert when scaler service is down
+- **HighAWSCosts** - Warning when costs exceed threshold
 
-## 🔒 Security
+## Troubleshooting
 
-### Authentication
-- Bearer token authentication for all API calls
-- Configurable secret token via environment variable
+### Service Issues
 
-### Network Security
-- Auto-created security groups for GPU nodes
-- Restricted access to Slurm ports (6817, 6818, 6809)
-- SSH access limited to private networks
+Check service status and logs:
+```bash
+sudo systemctl status gpu-scaler
+sudo journalctl -u gpu-scaler -f
+tail -f /var/log/gpu-scaler.log
+```
 
-### Best Practices
-- Run scaler service behind reverse proxy with HTTPS
+### Terraform Issues
+
+Verify credentials and initialization:
+```bash
+aws sts get-caller-identity
+cd terraform-scale
+terraform init
+terraform validate
+```
+
+### Scaling Issues
+
+Test manual scaling:
+```bash
+curl -X POST http://localhost:5000/scale \
+  -H "Authorization: Bearer your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"scale_up"}'
+```
+
+Check AWS ASG:
+```bash
+aws autoscaling describe-auto-scaling-groups \
+  --auto-scaling-group-names hpc-gpu-asg
+```
+
+## Security
+
+- Use strong authentication tokens (generate with `openssl rand -hex 32`)
+- Restrict security group access to necessary ports only
+- Deploy scaler behind HTTPS proxy for production
 - Use IAM roles with minimal required permissions
-- Regular security group audits
-- Monitor scaler logs for suspicious activity
+- Monitor logs for unauthorized access attempts
 
-## 🐛 Troubleshooting
+## Project Structure
 
-### Common Issues
+```
+gpu_pilot/
+├── README.md                    # This file
+├── setup.sh                     # Automated setup script
+├── scaler/
+│   ├── scaler.py               # Flask application
+│   └── requirements.txt        # Python dependencies
+├── terraform-scale/
+│   ├── main.tf                 # Terraform configuration
+│   ├── variables.tf            # Input variables
+│   ├── outputs.tf              # Output values
+│   └── user-data.sh            # Instance initialization script
+└── monitoring/
+    ├── prometheus-rules.yml    # Alert rules
+    ├── prometheus.yml          # Example Prometheus config
+    └── alertmanager.yml        # Example Alertmanager config
+```
 
-1. **Terraform fails with permission errors**
-   ```bash
-   # Check AWS credentials
-   aws sts get-caller-identity
-   # Verify IAM permissions for EC2, Auto Scaling, VPC
-   ```
+## License
 
-2. **Scaler service not receiving webhooks**
-   ```bash
-   # Check service status
-   sudo systemctl status gpu-scaler
-   # Check logs
-   sudo journalctl -u gpu-scaler -f
-   ```
+This project is licensed under the MIT License.
 
-3. **Nodes not joining Slurm cluster**
-   ```bash
-   # Check munge key synchronization
-   # Verify slurm.conf consistency
-   # Check network connectivity to head node
-   ```
+## Important Notes
 
-### Logs
-
-- Scaler service: `/var/log/gpu-scaler.log`
-- Systemd service: `journalctl -u gpu-scaler`
-- Terraform: `terraform-scale/` directory
-
-## 📊 Monitoring
-
-### Metrics Available
-
-- `/health` endpoint provides service health
-- Terraform outputs via `/status` endpoint
-- Integration with Prometheus for full observability
-
-### Dashboards
-
-Consider creating Grafana dashboards for:
-- Slurm queue metrics
-- AWS cost tracking
-- GPU utilization
-- Scaling events timeline
-
-## 🔄 Scaling Behavior
-
-### Scale Up Triggers
-- Pending jobs > threshold (configurable)
-- GPU partition demand
-- Custom Prometheus rules
-
-### Scale Down Triggers
-- No pending jobs for extended period
-- Low utilization metrics
-- Manual intervention
-
-### Cooldown Periods
-- 5-minute cooldown between scaling operations
-- Prevents rapid scaling oscillations
-- Configurable per operation type
-
-## 🏷️ Cost Management
-
-### Cost Controls
-- Maximum instance limits in ASG
-- Automatic scale-down triggers
-- Cost monitoring alerts
-
-### Optimization Tips
-- Use Spot instances for non-critical workloads
-- Set appropriate scale-down timeouts
-- Monitor usage patterns to optimize instance types
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make changes and add tests
-4. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-For issues and questions:
-1. Check the troubleshooting section
-2. Review logs for error details
-3. Open an issue with detailed information
-
----
-
-**⚠️ Important**: This system can incur AWS charges. Always monitor your usage and set up billing alerts.
+- This system provisions AWS resources that incur costs. Set up billing alerts.
+- Never commit secrets or tokens to version control.
+- Test in a non-production environment first.
+- Monitor logs and AWS costs regularly.
