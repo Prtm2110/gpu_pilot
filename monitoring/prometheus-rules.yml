@@ -10,7 +10,7 @@ groups:
     annotations:
       summary: "High number of pending Slurm jobs"
       description: "There are {{ $value }} pending jobs in the Slurm queue for more than 2 minutes"
-      
+
   - alert: GPUNodesNeeded
     expr: slurm_pending_jobs{partition="gpu"} > 10
     for: 1m
@@ -21,7 +21,7 @@ groups:
     annotations:
       summary: "GPU nodes needed for pending jobs"
       description: "{{ $value }} GPU jobs are pending, need to scale up"
-      
+
   - alert: LowGPUUtilization
     expr: slurm_running_jobs{partition="gpu"} == 0 and slurm_pending_jobs{partition="gpu"} == 0
     for: 10m
@@ -44,7 +44,7 @@ groups:
     annotations:
       summary: "High AWS costs detected"
       description: "Estimated monthly AWS cost is ${{ $value }}"
-      
+
   - alert: AutoScalerDown
     expr: up{job="gpu-scaler"} == 0
     for: 1m

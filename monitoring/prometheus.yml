@@ -29,17 +29,17 @@ scrape_configs:
 
   - job_name: 'node-exporter'
     static_configs:
-      - targets: 
+      - targets:
         - 'YOUR_SLURM_HEAD_NODE:9100'
         # GPU nodes will be auto-discovered via EC2 service discovery
-    
+
   - job_name: 'gpu-nodes'
     ec2_sd_configs:
       - region: us-west-2
         port: 9100
         filters:
           - name: tag:Type
-            values: 
+            values:
               - slurm-compute
           - name: instance-state-name
             values:
